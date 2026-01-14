@@ -34,11 +34,81 @@ bool lastButton3State = LOW;
 bool lastButton4State = LOW;
 bool lastButton5State = LOW;
 
+// 燈光秀狀態
+enum ShowState {
+  NORMAL,           // 正常模式
+  WAITING,          // 等待3秒
+  LIGHT_SHOW        // 燈光秀進行中
+};
+
+ShowState currentState = NORMAL;
+unsigned long stateStartTime = 0;
+bool allLightsWereOn = false;
+
 // RGB燈條控制函數（共陽極設計，數值反轉）
 void setRGB(int red, int green, int blue) {
   ledcWrite(PWM_CHANNEL_R, 255 - red);
   ledcWrite(PWM_CHANNEL_G, 255 - green);
   ledcWrite(PWM_CHANNEL_B, 255 - blue);
+}
+
+// 彩虹色彩計算（輸入0-255，輸出RGB）
+void getRainbowColor(int position, int &r, int &g, int &b) {
+  position = position % 256;
+  if (position < 85) {
+    r = 255 - position * 3;
+    g = position * 3;
+    b = 0;
+  } else if (position < 170) {
+    position -= 85;
+    r = 0;
+    g = 255 - position * 3;
+    b = position * 3;
+  } else {
+    position -= 170;
+    r = position * 3;
+    g = 0;
+    b = 255 - position * 3;
+  }
+}
+
+// 燈光秀主函數
+void runLightShow(unsigned long elapsedTime) {
+  int r = 0, g = 0, b = 0;
+  
+  if (elapsedTime < 3000) {
+    // 階段1：彩虹循環（0-3秒）
+    int colorPos = (elapsedTime * 256 / 3000) % 256;
+    getRainbowColor(colorPos, r, g, b);
+    
+  } else if (elapsedTime < 6000) {
+    // 階段2：快速彩虹（3-6秒）
+    int colorPos = ((elapsedTime - 3000) * 512 / 3000) % 256;
+    getRainbowColor(colorPos, r, g, b);
+    
+  } else if (elapsedTime < 8000) {
+    // 階段3：頻閃派對模式（6-8秒）
+    if ((elapsedTime / 100) % 2 == 0) {
+      int colorPos = (elapsedTime / 50) % 256;
+      getRainbowColor(colorPos, r, g, b);
+    } else {
+      r = g = b = 0;
+    }
+    
+  } else if (elapsedTime < 10000) {
+    // 階段4：呼吸燈淡出（8-10秒）
+    int fadeTime = elapsedTime - 8000;
+    int brightness = 255 - (fadeTime * 255 / 2000);
+    brightness = max(0, brightness);
+    
+    int colorPos = (elapsedTime / 10) % 256;
+    getRainbowColor(colorPos, r, g, b);
+    r = (r * brightness) / 255;
+    g = (g * brightness) / 255;
+    b = (b * brightness) / 255;
+  }
+  
+  setRGB(r, g, b);
 }
 
 void setup() {
@@ -84,43 +154,112 @@ void setup() {
 }
 
 void loop() {
-  // 讀取按鈕當前狀態
-  bool button3Current = (digitalRead(BUTTON_3) == HIGH);
-  bool button4Current = (digitalRead(BUTTON_4) == HIGH);
-  bool button5Current = (digitalRead(BUTTON_5) == HIGH);
+  unsigned long currentTime = millis();
   
-  // 偵測紅色按鈕按下瞬間（從LOW變HIGH）
-  if (button3Current == HIGH && lastButton3State == LOW) {
-    redLedState = !redLedState;  // 切換狀態
-    Serial.print("[紅色按鈕] 紅燈 -> ");
-    Serial.println(redLedState ? "開啟" : "關閉");
-    delay(DEBOUNCE_DELAY);
+  // 根據當前狀態執行不同邏輯
+  if (currentState == NORMAL) {
+    // 正常模式：處理按鈕輸入
+    bool button3Current = (digitalRead(BUTTON_3) == HIGH);
+    bool button4Current = (digitalRead(BUTTON_4) == HIGH);
+    bool button5Current = (digitalRead(BUTTON_5) == HIGH);
+    
+    // 偵測紅色按鈕按下瞬間（從LOW變HIGH）
+    if (button3Current == HIGH && lastButton3State == LOW) {
+      redLedState = !redLedState;
+      Serial.print("[紅色按鈕] 紅燈 -> ");
+      Serial.println(redLedState ? "開啟" : "關閉");
+      delay(DEBOUNCE_DELAY);
+    }
+    lastButton3State = button3Current;
+    
+    // 偵測綠色按鈕按下瞬間
+    if (button4Current == HIGH && lastButton4State == LOW) {
+      greenLedState = !greenLedState;
+      Serial.print("[綠色按鈕] 綠燈 -> ");
+      Serial.println(greenLedState ? "開啟" : "關閉");
+      delay(DEBOUNCE_DELAY);
+    }
+    lastButton4State = button4Current;
+    
+    // 偵測藍色按鈕按下瞬間
+    if (button5Current == HIGH && lastButton5State == LOW) {
+      blueLedState = !blueLedState;
+      Serial.print("[藍色按鈕] 藍燈 -> ");
+      Serial.println(blueLedState ? "開啟" : "關閉");
+      delay(DEBOUNCE_DELAY);
+    }
+    lastButton5State = button5Current;
+    
+    // 根據燈光狀態設定RGB
+    int red = redLedState ? 255 : 0;
+    int green = greenLedState ? 255 : 0;
+    int blue = blueLedState ? 255 : 0;
+    setRGB(red, green, blue);
+    
+    // 檢查是否三燈全亮
+    bool allLightsOn = redLedState && greenLedState && blueLedState;
+    if (allLightsOn && !allLightsWereOn) {
+      // 三燈剛剛全亮，進入等待階段
+      currentState = WAITING;
+      stateStartTime = currentTime;
+      allLightsWereOn = true;
+      Serial.println("========================================");
+      Serial.println("🎉 三燈全亮！倒數3秒後開始燈光秀...");
+      Serial.println("========================================");
+    }
+    if (!allLightsOn) {
+      allLightsWereOn = false;
+    }
+    
+  } else if (currentState == WAITING) {
+    // 等待階段：倒數3秒，期間閃爍提示
+    unsigned long elapsed = currentTime - stateStartTime;
+    
+    // 閃爍效果（每0.5秒切換）
+    if ((elapsed / 500) % 2 == 0) {
+      setRGB(255, 255, 255);  // 全亮
+    } else {
+      setRGB(0, 0, 0);  // 全暗
+    }
+    
+    // 每秒顯示倒數
+    static int lastSecond = -1;
+    int currentSecond = 3 - (elapsed / 1000);
+    if (currentSecond != lastSecond && currentSecond >= 0) {
+      Serial.print("倒數：");
+      Serial.println(currentSecond);
+      lastSecond = currentSecond;
+    }
+    
+    // 3秒後進入燈光秀
+    if (elapsed >= 3000) {
+      currentState = LIGHT_SHOW;
+      stateStartTime = currentTime;
+      Serial.println("========================================");
+      Serial.println("✨ 燈光秀開始！");
+      Serial.println("========================================");
+    }
+    
+  } else if (currentState == LIGHT_SHOW) {
+    // 燈光秀階段
+    unsigned long elapsed = currentTime - stateStartTime;
+    
+    if (elapsed < 10000) {
+      // 執行燈光秀
+      runLightShow(elapsed);
+    } else {
+      // 燈光秀結束，全暗並重置
+      setRGB(0, 0, 0);
+      redLedState = false;
+      greenLedState = false;
+      blueLedState = false;
+      allLightsWereOn = false;
+      currentState = NORMAL;
+      Serial.println("========================================");
+      Serial.println("🌙 燈光秀結束，所有燈已重置");
+      Serial.println("========================================");
+    }
   }
-  lastButton3State = button3Current;
-  
-  // 偵測綠色按鈕按下瞬間
-  if (button4Current == HIGH && lastButton4State == LOW) {
-    greenLedState = !greenLedState;  // 切換狀態
-    Serial.print("[綠色按鈕] 綠燈 -> ");
-    Serial.println(greenLedState ? "開啟" : "關閉");
-    delay(DEBOUNCE_DELAY);
-  }
-  lastButton4State = button4Current;
-  
-  // 偵測藍色按鈕按下瞬間
-  if (button5Current == HIGH && lastButton5State == LOW) {
-    blueLedState = !blueLedState;  // 切換狀態
-    Serial.print("[藍色按鈕] 藍燈 -> ");
-    Serial.println(blueLedState ? "開啟" : "關閉");
-    delay(DEBOUNCE_DELAY);
-  }
-  lastButton5State = button5Current;
-  
-  // 根據燈光狀態設定RGB
-  int red = redLedState ? 255 : 0;
-  int green = greenLedState ? 255 : 0;
-  int blue = blueLedState ? 255 : 0;
-  setRGB(red, green, blue);
   
   delay(10);  // 短暫延遲，避免CPU空轉
 }
