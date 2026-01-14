@@ -3,7 +3,7 @@
 // 定義5個按鈕接腳（B側 - 輸入）
 #define BUTTON_1 13  // B5 - 黃色按鈕
 #define BUTTON_2 14  // B8 - 黑色按鈕
-#define BUTTON_3 27  // B9 - 紅色按鈕
+#define BUTTON_3 12  // B7 - 紅色按鈕
 #define BUTTON_4 33  // B12 - 綠色按鈕
 #define BUTTON_5 32  // B13 - 藍色按鈕
 
@@ -23,7 +23,7 @@ void setup() {
   // 設定5個按鈕為輸入模式（不使用內建上拉，按鈕模組有自己的電路）
   pinMode(BUTTON_1, INPUT);
   pinMode(BUTTON_2, INPUT);
-  // pinMode(BUTTON_3, INPUT);  // 暫時關閉紅色按鈕
+  pinMode(BUTTON_3, INPUT);
   pinMode(BUTTON_4, INPUT);
   pinMode(BUTTON_5, INPUT);
   
@@ -34,7 +34,7 @@ void setup() {
   Serial.println("按鈕配置：");
   Serial.println("  黃色按鈕 -> GPIO 13 (B5)");
   Serial.println("  黑色按鈕 -> GPIO 14 (B8)");
-  Serial.println("  紅色按鈕 -> GPIO 27 (B9)");
+  Serial.println("  紅色按鈕 -> GPIO 12 (B7)");
   Serial.println("  綠色按鈕 -> GPIO 33 (B12)");
   Serial.println("  藍色按鈕 -> GPIO 32 (B13)");
   Serial.println("");
@@ -48,14 +48,14 @@ void loop() {
   // 讀取5個按鈕的狀態（HIGH = 按下，LOW = 未按）
   bool button1Pressed = (digitalRead(BUTTON_1) == HIGH);
   bool button2Pressed = (digitalRead(BUTTON_2) == HIGH);
-  // bool button3Pressed = (digitalRead(BUTTON_3) == HIGH);  // 暫時關閉紅色按鈕
+  bool button3Pressed = (digitalRead(BUTTON_3) == HIGH);
   bool button4Pressed = (digitalRead(BUTTON_4) == HIGH);
   bool button5Pressed = (digitalRead(BUTTON_5) == HIGH);
   
   // 檢查是否有任何一個按鈕被按下
   bool anyButtonPressed = button1Pressed || button2Pressed || 
-                          // button3Pressed ||  // 暫時關閉紅色按鈕
-                          button4Pressed || button5Pressed;
+                          button3Pressed || button4Pressed || 
+                          button5Pressed;
   
   // 根據按鈕狀態控制LED
   if (anyButtonPressed) {
@@ -65,7 +65,7 @@ void loop() {
     Serial.print("按鈕按下：");
     if (button1Pressed) Serial.print("[黃色] ");
     if (button2Pressed) Serial.print("[黑色] ");
-    // if (button3Pressed) Serial.print("[紅色] ");  // 暫時關閉紅色按鈕
+    if (button3Pressed) Serial.print("[紅色] ");
     if (button4Pressed) Serial.print("[綠色] ");
     if (button5Pressed) Serial.print("[藍色] ");
     Serial.println("-> LED亮");
