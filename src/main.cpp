@@ -84,6 +84,14 @@ ShowState currentState = NORMAL;
 unsigned long stateStartTime = 0;
 bool allLightsWereOn = false;
 
+// 抽獎狀態追蹤
+unsigned long lotteryStartTime = 0;  // 抽獎開始時間（燈光秀結束）
+bool lotteryAvailable = false;       // 是否在抽獎時間內（1分鐘內）
+bool lotteryUsed = false;             // 是否已經抽過籤
+
+// 抽獎限時（1分鐘 = 60000毫秒）
+#define LOTTERY_TIMEOUT 60000
+
 // RGB燈條控制函數（共陽極設計，數值反轉）
 void setRGB(int red, int green, int blue) {
   ledcWrite(PWM_CHANNEL_R, 255 - red);
@@ -474,9 +482,14 @@ void setup() {
   Serial.println("  紅色按鈕 (GPIO 12) -> 切換紅燈");
   Serial.println("  綠色按鈕 (GPIO 33) -> 切換綠燈");
   Serial.println("  藍色按鈕 (GPIO 32) -> 切換藍燈");
-  Serial.println("  黃色按鈕 (GPIO 13) -> 直接抽籤播放");
+  Serial.println("  黃色按鈕 (GPIO 13) -> 抽籤（僅限燈光秀後1分鐘內）");
   Serial.println("");
-  Serial.println("✨ 特殊模式：三燈全亮 -> 3秒閃爍 -> 10秒燈光秀 -> 抽籤播放");
+  Serial.println("✨ 完整流程：");
+  Serial.println("   1. 按紅/綠/藍按鈕亮三燈");
+  Serial.println("   2. 三燈全亮 -> 3秒倒數閃爍");
+  Serial.println("   3. 10秒華麗燈光秀");
+  Serial.println("   4. 燈光秀結束後，1分鐘內按黃色按鈕抽籤");
+  Serial.println("   5. 按一次後失效，需重新完成流程");
   Serial.println("========================================\n");
 }
 
@@ -487,26 +500,10 @@ void loop() {
   if (currentState == NORMAL) {
     // ========== 正常模式：處理按鈕輸入 ==========
     
-    // 讀取按鈕狀態
-    bool button1Current = (digitalRead(BUTTON_1) == HIGH);  // 黃色按鈕（直接抽籤）
+    // 讀取按鈕狀態（黃色按鈕在 NORMAL 模式下不處理）
     bool button3Current = (digitalRead(BUTTON_3) == HIGH);  // 紅色按鈕
     bool button4Current = (digitalRead(BUTTON_4) == HIGH);  // 綠色按鈕
     bool button5Current = (digitalRead(BUTTON_5) == HIGH);  // 藍色按鈕
-    
-    // 偵測黃色按鈕按下（直接觸發抽籤）
-    if (button1Current == HIGH && lastButton1State == LOW) {
-      if (bluetoothConnected && audioFileReady) {
-        Serial.println("[黃色按鈕] 直接觸發抽籤");
-        String selectedFile = selectAudioFile();
-        if (selectedFile != "") {
-          playAudioFile(selectedFile);
-        }
-      } else {
-        Serial.println("⚠️  藍牙未連接或無音檔，無法播放");
-      }
-      delay(DEBOUNCE_DELAY);
-    }
-    lastButton1State = button1Current;
     
     // 偵測紅色按鈕按下瞬間
     if (button3Current == HIGH && lastButton3State == LOW) {
@@ -597,34 +594,101 @@ void loop() {
     } else {
       // 燈光秀結束，進入抽籤階段
       currentState = LOTTERY;
+      lotteryStartTime = currentTime;  // 記錄抽籤開始時間
+      lotteryAvailable = true;          // 開啟抽籤
+      lotteryUsed = false;              // 重置使用狀態
+      
+      // 先全暗，等待按鈕
+      setRGB(0, 0, 0);
+      
       Serial.println("========================================");
-      Serial.println("🎲 燈光秀結束，開始抽籤...");
+      Serial.println("🎲 燈光秀結束！");
+      Serial.println("⏰ 請在 1 分鐘內按下黃色按鈕抽籤");
       Serial.println("========================================");
     }
     
   } else if (currentState == LOTTERY) {
-    // ========== 抽籤階段：選擇並播放音檔 ==========
+    // ========== 抽籤階段：等待黃色按鈕按下（1分鐘限時）==========
     
-    if (bluetoothConnected && audioFileReady) {
-      String selectedFile = selectAudioFile();
-      if (selectedFile != "") {
-        playAudioFile(selectedFile);
-      }
-    } else {
-      Serial.println("⚠️  藍牙未連接或無音檔，跳過播放");
+    unsigned long elapsed = currentTime - lotteryStartTime;
+    unsigned long remaining = LOTTERY_TIMEOUT - elapsed;
+    
+    // 檢查是否超時
+    if (elapsed >= LOTTERY_TIMEOUT) {
+      Serial.println("========================================");
+      Serial.println("⏰ 抽籤時間已過，機會失效！");
+      Serial.println("========================================");
+      
+      // 重置所有狀態，回到正常模式
+      setRGB(0, 0, 0);
+      redLedState = false;
+      greenLedState = false;
+      blueLedState = false;
+      allLightsWereOn = false;
+      lotteryAvailable = false;
+      lotteryUsed = false;
+      currentState = NORMAL;
+      
+      Serial.println("🌙 所有燈已重置，回到正常模式\n");
+      return;
     }
     
-    // 重置所有狀態，回到正常模式
-    setRGB(0, 0, 0);
-    redLedState = false;
-    greenLedState = false;
-    blueLedState = false;
-    allLightsWereOn = false;
-    currentState = NORMAL;
+    // 顯示剩餘時間（每10秒更新一次）
+    static unsigned long lastCountdown = 0;
+    if (currentTime - lastCountdown >= 10000) {
+      int remainingSeconds = remaining / 1000;
+      Serial.print("⏰ 抽籤剩餘時間：");
+      Serial.print(remainingSeconds);
+      Serial.println(" 秒");
+      lastCountdown = currentTime;
+    }
     
-    Serial.println("========================================");
-    Serial.println("🌙 所有燈已重置，回到正常模式");
-    Serial.println("========================================");
+    // 呼吸燈效果（提示可以按按鈕）
+    int breathValue = (sin((currentTime % 2000) * 3.14159 / 1000.0) + 1) * 127;
+    setRGB(breathValue, breathValue, 0);  // 黃色呼吸燈
+    
+    // 檢查黃色按鈕
+    bool button1Current = (digitalRead(BUTTON_1) == HIGH);
+    
+    if (button1Current == HIGH && lastButton1State == LOW && !lotteryUsed) {
+      // 黃色按鈕按下且尚未使用
+      Serial.println("\n========================================");
+      Serial.println("🎲 黃色按鈕按下，開始抽籤！");
+      Serial.println("========================================");
+      
+      lotteryUsed = true;  // 標記已使用
+      
+      if (bluetoothConnected && audioFileReady) {
+        String selectedFile = selectAudioFile();
+        if (selectedFile != "") {
+          playAudioFile(selectedFile);
+          
+          // 等待播放完成（最多等30秒）
+          unsigned long playStartTime = millis();
+          while (isPlaying && (millis() - playStartTime < 30000)) {
+            delay(100);
+          }
+        }
+      } else {
+        Serial.println("⚠️  藍牙未連接或無音檔，跳過播放");
+      }
+      
+      // 播放完成後重置
+      Serial.println("\n========================================");
+      Serial.println("🌙 抽籤完成，所有燈已重置");
+      Serial.println("========================================\n");
+      
+      setRGB(0, 0, 0);
+      redLedState = false;
+      greenLedState = false;
+      blueLedState = false;
+      allLightsWereOn = false;
+      lotteryAvailable = false;
+      lotteryUsed = false;
+      currentState = NORMAL;
+    }
+    
+    lastButton1State = button1Current;
   }
   
   delay(10);  // 短暫延遲，避免CPU空轉
