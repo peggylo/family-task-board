@@ -593,9 +593,35 @@ void loop() {
       lastCountdown = currentTime;
     }
     
-    // 呼吸燈效果（提示可以按按鈕）
-    int breathValue = (sin((currentTime % 2000) * 3.14159 / 1000.0) + 1) * 127;
-    setRGB(breathValue, breathValue, 0);  // 黃色呼吸燈
+    // 華麗的燈光秀效果（8秒循環，重複播放）
+    // 移除頻閃，保留彩虹循環 + 快速彩虹 + 呼吸淡出
+    unsigned long cycleTime = elapsed % 8000;  // 8秒循環
+    int r = 0, g = 0, b = 0;
+    
+    if (cycleTime < 3000) {
+      // 階段1：彩虹循環（0-3秒）
+      int colorPos = (cycleTime * 256 / 3000) % 256;
+      getRainbowColor(colorPos, r, g, b);
+      
+    } else if (cycleTime < 6000) {
+      // 階段2：快速彩虹（3-6秒）
+      int colorPos = ((cycleTime - 3000) * 512 / 3000) % 256;
+      getRainbowColor(colorPos, r, g, b);
+      
+    } else {
+      // 階段3：呼吸燈彩虹（6-8秒）
+      int fadeTime = cycleTime - 6000;
+      int brightness = 255 - (fadeTime * 128 / 2000);  // 淡到50%而非全暗
+      brightness = max(128, brightness);
+      
+      int colorPos = (cycleTime / 10) % 256;
+      getRainbowColor(colorPos, r, g, b);
+      r = (r * brightness) / 255;
+      g = (g * brightness) / 255;
+      b = (b * brightness) / 255;
+    }
+    
+    setRGB(r, g, b);
     
     // 檢查黃色按鈕
     bool button1Current = (digitalRead(BUTTON_1) == HIGH);
