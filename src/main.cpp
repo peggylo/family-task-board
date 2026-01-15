@@ -10,6 +10,14 @@ File audioFile;
 bool audioFileReady = false;
 bool isPlaying = false;
 
+// 音檔列表（依類別分類）
+String dadFiles[10];   // Dad 系列音檔
+String momFiles[10];   // Mom 系列音檔
+String sxFiles[10];    // SX 系列音檔
+int dadCount = 0;
+int momCount = 0;
+int sxCount = 0;
+
 // WAV 檔案標頭資訊（跳過前 44 bytes）
 const int WAV_HEADER_SIZE = 44;
 
@@ -141,6 +149,159 @@ void connection_state_changed(esp_a2d_connection_state_t state, void *ptr) {
   }
 }
 
+// 掃描 SPIFFS 並分類音檔
+void scanAudioFiles() {
+  Serial.println("\n【掃描音檔】");
+  
+  File root = SPIFFS.open("/");
+  File file = root.openNextFile();
+  
+  dadCount = 0;
+  momCount = 0;
+  sxCount = 0;
+  
+  while (file) {
+    String fileName = String(file.name());
+    
+    // 只處理 .wav 檔案
+    if (fileName.endsWith(".wav")) {
+      Serial.print("  發現音檔: ");
+      Serial.println(fileName);
+      
+      // 根據檔名前綴分類（檔名可能有或沒有 / 前綴）
+      if ((fileName.startsWith("/Dad_") || fileName.startsWith("Dad_")) && dadCount < 10) {
+        dadFiles[dadCount++] = fileName;
+        Serial.println("    → 歸類為 Dad 系列");
+      } else if ((fileName.startsWith("/Mom_") || fileName.startsWith("Mom_")) && momCount < 10) {
+        momFiles[momCount++] = fileName;
+        Serial.println("    → 歸類為 Mom 系列");
+      } else if ((fileName.startsWith("/SX_") || fileName.startsWith("SX_")) && sxCount < 10) {
+        sxFiles[sxCount++] = fileName;
+        Serial.println("    → 歸類為 SX 系列");
+      }
+    }
+    
+    file = root.openNextFile();
+  }
+  
+  // 顯示統計
+  Serial.println("\n📊 音檔統計：");
+  Serial.print("  Dad 系列: ");
+  Serial.print(dadCount);
+  Serial.println(" 個");
+  Serial.print("  Mom 系列: ");
+  Serial.print(momCount);
+  Serial.println(" 個");
+  Serial.print("  SX 系列: ");
+  Serial.print(sxCount);
+  Serial.println(" 個");
+  
+  // 檢查是否有音檔
+  if (dadCount > 0 || momCount > 0 || sxCount > 0) {
+    audioFileReady = true;
+    Serial.println("✅ 音檔掃描完成\n");
+  } else {
+    Serial.println("❌ 沒有找到任何音檔\n");
+  }
+}
+
+// 播放指定音檔
+void playAudioFile(String fileName) {
+  if (isPlaying) {
+    Serial.println("⚠️  正在播放中，請稍後再試");
+    return;
+  }
+  
+  Serial.print("🎵 開始播放: ");
+  Serial.println(fileName);
+  
+  // 確保檔案路徑有 / 前綴
+  if (!fileName.startsWith("/")) {
+    fileName = "/" + fileName;
+  }
+  
+  // 開啟音檔
+  audioFile = SPIFFS.open(fileName, "r");
+  if (audioFile) {
+    // 跳過 WAV 標頭（44 bytes）
+    audioFile.seek(WAV_HEADER_SIZE);
+    
+    // 初始化緩衝區和重採樣參數
+    bufferIndex = 0;
+    bufferSize = 0;
+    resamplePosition = 1.0;
+    lastSample = 0;
+    
+    isPlaying = true;
+    setRGB(0, 0, 255);  // 藍色表示正在播放
+    
+    Serial.println("✅ 音檔已開啟，開始串流（16kHz -> 44.1kHz）...");
+  } else {
+    Serial.print("❌ 無法開啟音檔: ");
+    Serial.println(fileName);
+  }
+}
+
+// 隨機抽籤並播放
+void lottery() {
+  if (!bluetoothConnected) {
+    Serial.println("⚠️  藍牙尚未連接，無法播放");
+    return;
+  }
+  
+  if (!audioFileReady) {
+    Serial.println("⚠️  沒有可用的音檔");
+    return;
+  }
+  
+  Serial.println("\n🎲 開始抽籤...");
+  
+  // 隨機選擇類別（0=Dad, 1=Mom, 2=SX）
+  int category = random(0, 3);
+  String selectedFile = "";
+  
+  if (category == 0 && dadCount > 0) {
+    // Dad 系列
+    int index = random(0, dadCount);
+    selectedFile = dadFiles[index];
+    Serial.println("🎯 抽中 Dad 系列");
+  } else if (category == 1 && momCount > 0) {
+    // Mom 系列
+    int index = random(0, momCount);
+    selectedFile = momFiles[index];
+    Serial.println("🎯 抽中 Mom 系列");
+  } else if (category == 2 && sxCount > 0) {
+    // SX 系列
+    int index = random(0, sxCount);
+    selectedFile = sxFiles[index];
+    Serial.println("🎯 抽中 SX 系列");
+  } else {
+    // 如果選中的類別沒有音檔，隨便選一個有音檔的類別
+    Serial.println("⚠️  該類別無音檔，重新選擇...");
+    
+    if (dadCount > 0) {
+      int index = random(0, dadCount);
+      selectedFile = dadFiles[index];
+      Serial.println("🎯 抽中 Dad 系列（備選）");
+    } else if (momCount > 0) {
+      int index = random(0, momCount);
+      selectedFile = momFiles[index];
+      Serial.println("🎯 抽中 Mom 系列（備選）");
+    } else if (sxCount > 0) {
+      int index = random(0, sxCount);
+      selectedFile = sxFiles[index];
+      Serial.println("🎯 抽中 SX 系列（備選）");
+    }
+  }
+  
+  // 播放選中的音檔
+  if (selectedFile != "") {
+    playAudioFile(selectedFile);
+  } else {
+    Serial.println("❌ 無法選擇音檔");
+  }
+}
+
 void setup() {
   // 初始化序列埠
   Serial.begin(115200);
@@ -164,7 +325,10 @@ void setup() {
   // 設定按鈕
   pinMode(BUTTON_PLAY, INPUT);
   
-  // ========== 階段 1：測試 SPIFFS ==========
+  // 初始化隨機數種子
+  randomSeed(analogRead(0));
+  
+  // ========== 階段 1：初始化 SPIFFS ==========
   Serial.println("\n【階段 1】初始化 SPIFFS...");
   
   if (!SPIFFS.begin(true)) {
@@ -175,33 +339,11 @@ void setup() {
   
   Serial.println("✅ SPIFFS 初始化成功");
   
-  // 列出所有檔案
-  Serial.println("\n📁 SPIFFS 中的檔案：");
-  File root = SPIFFS.open("/");
-  File file = root.openNextFile();
-  bool foundAudio = false;
+  // 掃描並分類音檔
+  scanAudioFiles();
   
-  while (file) {
-    Serial.print("  - ");
-    Serial.print(file.name());
-    Serial.print(" (");
-    Serial.print(file.size());
-    Serial.println(" bytes)");
-    
-    if (String(file.name()).endsWith("SX_tabata.wav")) {
-      foundAudio = true;
-    }
-    
-    file = root.openNextFile();
-  }
-  
-  // 檢查目標音檔
-  if (SPIFFS.exists("/SX_tabata.wav")) {
-    Serial.println("\n✅ 找到 SX_tabata.wav");
-    audioFileReady = true;
-    setRGB(255, 0, 0);  // 紅色表示 SPIFFS 就緒（暫時）
-  } else {
-    Serial.println("\n❌ 找不到 SX_tabata.wav");
+  if (!audioFileReady) {
+    Serial.println("❌ 沒有找到任何音檔");
     setRGB(255, 0, 0);  // 紅色表示錯誤
     while (1) { delay(1000); }
   }
@@ -241,10 +383,10 @@ void setup() {
     setRGB(255, 255, 0);  // 黃色表示等待連接
   }
   
-  // ========== 階段 3：準備播放 ==========
+  // ========== 階段 3：系統就緒 ==========
   Serial.println("\n【階段 3】系統就緒");
   Serial.println("========================================");
-  Serial.println("按下黃色按鈕（GPIO 13）開始播放音檔");
+  Serial.println("按下黃色按鈕（GPIO 13）隨機抽籤播放音檔");
   Serial.println("========================================\n");
 }
 
@@ -254,34 +396,8 @@ void loop() {
   
   // 偵測按鈕按下（從 LOW 變 HIGH）
   if (buttonCurrent == HIGH && lastButtonState == LOW) {
-    if (bluetoothConnected && audioFileReady && !isPlaying) {
-      Serial.println("\n🎵 開始播放 SX_tabata.wav...");
-      
-      // 開啟音檔
-      audioFile = SPIFFS.open("/SX_tabata.wav", "r");
-      if (audioFile) {
-        // 跳過 WAV 標頭（44 bytes）
-        audioFile.seek(WAV_HEADER_SIZE);
-        
-        // 初始化緩衝區和重採樣參數
-        bufferIndex = 0;
-        bufferSize = 0;
-        resamplePosition = 1.0;  // 設為 1.0 讓第一次就讀取樣本
-        lastSample = 0;
-        
-        isPlaying = true;
-        setRGB(0, 0, 255);  // 藍色表示正在播放
-        
-        Serial.println("✅ 音檔已開啟，開始串流（16kHz -> 44.1kHz）...");
-      } else {
-        Serial.println("❌ 無法開啟音檔");
-      }
-    } else if (!bluetoothConnected) {
-      Serial.println("⚠️  藍牙尚未連接，無法播放");
-    } else if (isPlaying) {
-      Serial.println("⚠️  正在播放中...");
-    }
-    
+    // 觸發抽籤
+    lottery();
     delay(50);  // 防彈跳
   }
   
