@@ -24,20 +24,12 @@
 // 按鈕防彈跳時間（毫秒）
 #define DEBOUNCE_DELAY 50
 
-// SU-03T 語音模組接腳
-#define TTS_TX_PIN 18  // ESP32 TX -> SU-03T RX (I11)
-#define TTS_RX_PIN 19  // ESP32 RX -> SU-03T TX (I12)
-
-// 建立硬體序列埠給 SU-03T
-HardwareSerial ttsSerial(2);  // 使用 UART2
-
 // 燈光狀態（true=亮，false=暗）
 bool redLedState = false;
 bool greenLedState = false;
 bool blueLedState = false;
 
 // 上次按鈕狀態（用於偵測按下瞬間）
-bool lastButton2State = LOW;  // 黑色按鈕
 bool lastButton3State = LOW;
 bool lastButton4State = LOW;
 bool lastButton5State = LOW;
@@ -119,29 +111,6 @@ void runLightShow(unsigned long elapsedTime) {
   setRGB(r, g, b);
 }
 
-// SU-03T 語音合成函數（嘗試多種格式）
-void speakText(const char* text) {
-  // 格式1：標準格式加換行
-  ttsSerial.print("[");
-  ttsSerial.print(text);
-  ttsSerial.println("]");
-  
-  Serial.print("🔊 播放語音（格式1）：");
-  Serial.println(text);
-  
-  delay(100);
-  
-  // 格式2：加上前導碼
-  ttsSerial.write(0xFD);
-  ttsSerial.write((uint8_t)0x00);
-  ttsSerial.write((uint8_t)strlen(text) + 2);
-  ttsSerial.write((uint8_t)0x01);
-  ttsSerial.write((uint8_t)0x01);
-  ttsSerial.print(text);
-  
-  Serial.println("🔊 播放語音（格式2）：已發送帶前導碼指令");
-}
-
 void setup() {
   // 初始化序列埠（用於除錯）
   Serial.begin(115200);
@@ -169,17 +138,11 @@ void setup() {
   // 初始關閉RGB燈條
   setRGB(0, 0, 0);
   
-  // 初始化 SU-03T 語音模組
-  ttsSerial.begin(9600, SERIAL_8N1, TTS_RX_PIN, TTS_TX_PIN);
-  delay(500);  // 等待模組初始化
-  Serial.println("SU-03T 語音模組已初始化");
-  
   Serial.println("按鈕配置：");
   Serial.println("  紅色按鈕 -> GPIO 12 (B7) -> 紅色燈光");
   Serial.println("  綠色按鈕 -> GPIO 33 (B12) -> 綠色燈光");
   Serial.println("  藍色按鈕 -> GPIO 32 (B13) -> 藍色燈光");
-  Serial.println("  黑色按鈕 -> GPIO 14 (B8) -> 測試語音");
-  Serial.println("  （黃色按鈕暫不作用）");
+  Serial.println("  （黃色、黑色按鈕暫不作用）");
   Serial.println("");
   Serial.println("RGB輸出：");
   Serial.println("  R -> GPIO 16 (I8)");
@@ -196,18 +159,9 @@ void loop() {
   // 根據當前狀態執行不同邏輯
   if (currentState == NORMAL) {
     // 正常模式：處理按鈕輸入
-    bool button2Current = (digitalRead(BUTTON_2) == HIGH);  // 黑色按鈕
     bool button3Current = (digitalRead(BUTTON_3) == HIGH);
     bool button4Current = (digitalRead(BUTTON_4) == HIGH);
     bool button5Current = (digitalRead(BUTTON_5) == HIGH);
-    
-    // 偵測黑色按鈕按下（測試語音）
-    if (button2Current == HIGH && lastButton2State == LOW) {
-      Serial.println("[黑色按鈕] 測試語音播放");
-      speakText("測試成功，語音模組正常運作");
-      delay(DEBOUNCE_DELAY);
-    }
-    lastButton2State = button2Current;
     
     // 偵測紅色按鈕按下瞬間（從LOW變HIGH）
     if (button3Current == HIGH && lastButton3State == LOW) {
