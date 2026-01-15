@@ -486,10 +486,8 @@ void setup() {
   Serial.println("");
   Serial.println("✨ 完整流程：");
   Serial.println("   1. 按紅/綠/藍按鈕亮三燈");
-  Serial.println("   2. 三燈全亮 -> 3秒倒數閃爍");
-  Serial.println("   3. 10秒華麗燈光秀");
-  Serial.println("   4. 燈光秀結束後，1分鐘內按黃色按鈕抽籤");
-  Serial.println("   5. 按一次後失效，需重新完成流程");
+  Serial.println("   2. 三燈全亮後，1分鐘內按黃色按鈕抽籤");
+  Serial.println("   3. 按一次後失效，需重新完成流程");
   Serial.println("========================================\n");
 }
 
@@ -543,68 +541,20 @@ void loop() {
     // 檢查是否三燈全亮
     bool allLightsOn = redLedState && greenLedState && blueLedState;
     if (allLightsOn && !allLightsWereOn) {
-      // 三燈剛剛全亮，進入等待階段
-      currentState = WAITING;
-      stateStartTime = currentTime;
-      allLightsWereOn = true;
-      Serial.println("========================================");
-      Serial.println("🎉 三燈全亮！倒數3秒後開始燈光秀...");
-      Serial.println("========================================");
-    }
-    if (!allLightsOn) {
-      allLightsWereOn = false;
-    }
-    
-  } else if (currentState == WAITING) {
-    // ========== 等待階段：倒數3秒，閃爍提示 ==========
-    unsigned long elapsed = currentTime - stateStartTime;
-    
-    // 閃爍效果（每0.5秒切換）
-    if ((elapsed / 500) % 2 == 0) {
-      setRGB(255, 255, 255);  // 全亮
-    } else {
-      setRGB(0, 0, 0);  // 全暗
-    }
-    
-    // 每秒顯示倒數
-    static int lastSecond = -1;
-    int currentSecond = 3 - (elapsed / 1000);
-    if (currentSecond != lastSecond && currentSecond >= 0) {
-      Serial.print("倒數：");
-      Serial.println(currentSecond);
-      lastSecond = currentSecond;
-    }
-    
-    // 3秒後進入燈光秀
-    if (elapsed >= 3000) {
-      currentState = LIGHT_SHOW;
-      stateStartTime = currentTime;
-      Serial.println("========================================");
-      Serial.println("✨ 燈光秀開始！");
-      Serial.println("========================================");
-    }
-    
-  } else if (currentState == LIGHT_SHOW) {
-    // ========== 燈光秀階段：10秒彩虹特效 ==========
-    unsigned long elapsed = currentTime - stateStartTime;
-    
-    if (elapsed < 10000) {
-      // 執行燈光秀
-      runLightShow(elapsed);
-    } else {
-      // 燈光秀結束，進入抽籤階段
+      // 三燈剛剛全亮，直接進入抽籤階段
       currentState = LOTTERY;
       lotteryStartTime = currentTime;  // 記錄抽籤開始時間
       lotteryAvailable = true;          // 開啟抽籤
       lotteryUsed = false;              // 重置使用狀態
-      
-      // 先全暗，等待按鈕
-      setRGB(0, 0, 0);
+      allLightsWereOn = true;
       
       Serial.println("========================================");
-      Serial.println("🎲 燈光秀結束！");
+      Serial.println("🎉 三燈全亮！");
       Serial.println("⏰ 請在 1 分鐘內按下黃色按鈕抽籤");
       Serial.println("========================================");
+    }
+    if (!allLightsOn) {
+      allLightsWereOn = false;
     }
     
   } else if (currentState == LOTTERY) {
