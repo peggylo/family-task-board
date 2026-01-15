@@ -27,9 +27,9 @@ uint8_t audioBuffer[AUDIO_BUFFER_SIZE];
 int bufferIndex = 0;
 int bufferSize = 0;
 
-// 重採樣參數（16kHz -> 44.1kHz）
-// 採樣率比例：44100 / 16000 = 2.75625
-#define SRC_SAMPLE_RATE 16000
+// 重採樣參數（8kHz -> 44.1kHz）
+// 採樣率比例：44100 / 8000 = 5.5125
+#define SRC_SAMPLE_RATE 8000
 #define DST_SAMPLE_RATE 44100
 float resamplePosition = 0.0;
 int16_t lastSample = 0;
