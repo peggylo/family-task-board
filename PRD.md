@@ -71,14 +71,6 @@
 
 ---
 
-## 開發狀態
-
-目前進度：⏳ **階段 4 - 音頻模組整合中**
-
-詳細開發計畫參考：[development_plan.md](development_plan.md)
-
----
-
 ## 相關文件
 
 - [開發計畫](development_plan.md)

@@ -6,13 +6,12 @@
 |------|-----------|-----------|------|
 | ESP32 開發板 | DevKit V1 | - | 主控制器 |
 | RGB LED 燈條 | Common Anode 5V | R:16, G:17, B:5 | 三色獨立 PWM 控制 |
-| SU-03T 語音模組 | 離線語音播放 | TX:18, RX:19 | UART2 通訊 |
+| 藍牙喇叭 | Bose Mini II SoundLink | - | A2DP 藍牙連接 |
 | 按鈕 1（黑） | 輕觸按鈕 | GPIO 2 | 抽獎觸發 |
 | 按鈕 2（黃） | 輕觸按鈕 | GPIO 15 | 保留未用 |
 | 按鈕 3（紅） | 輕觸按鈕 | GPIO 4 | 任務 1 |
 | 按鈕 4（綠） | 輕觸按鈕 | GPIO 0 | 任務 2 |
 | 按鈕 5（藍） | 輕觸按鈕 | GPIO 13 | 任務 3 |
-| 喇叭 | 4Ω/8Ω | - | 接 SU-03T SPK+/SPK- |
 
 詳細接線說明參考：[wiring.md](wiring.md)
 
@@ -53,20 +52,25 @@ void setRGB(int red, int green, int blue) {
 }
 ```
 
-### UART 通訊（ESP32 ↔ SU-03T）
+### 藍牙音頻播放（ESP32 → 藍牙喇叭）
 
 ```cpp
-HardwareSerial ttsSerial(2); // 使用 UART2
+#include "BluetoothA2DPSource.h"
+#include <SPIFFS.h>
 
-void setup() {
-  ttsSerial.begin(9600, SERIAL_8N1, TTS_RX_PIN, TTS_TX_PIN);
+BluetoothA2DPSource a2dp_source;
+File audioFile;
+
+// 音頻回調函數
+int32_t get_sound_data(Frame *frame, int32_t frame_count) {
+  // 從 SPIFFS 讀取 WAV 音頻資料
+  // 進行重採樣（16kHz → 44.1kHz）
+  // 填充至藍牙音頻 frame
 }
 
-void speakText(const char* text) {
-  // 發送播放指令至 SU-03T
-  ttsSerial.print("[");
-  ttsSerial.print(text);
-  ttsSerial.println("]");
+void setup() {
+  SPIFFS.begin(true);
+  a2dp_source.start("Bose Mini II SoundLink", get_sound_data);
 }
 ```
 
@@ -92,18 +96,14 @@ ffmpeg -i input.m4a -ar 16000 -ac 1 -sample_fmt s16 -acodec pcm_s16le output.wav
 - `-sample_fmt s16`：16-bit 格式
 - `-acodec pcm_s16le`：PCM 編碼
 
-### 3. 燒錄至 SU-03T
-1. 連接 CH340 燒錄器至 SU-03T：
-   - CH340 TX → SU-03T B7 (RX)
-   - CH340 RX → SU-03T B6 (TX)
-   - CH340 5V → SU-03T I10
-   - CH340 GND → SU-03T I09
+### 3. 上傳至 ESP32 SPIFFS
+將 WAV 檔案放入專案的 `data/` 資料夾，使用 PlatformIO 上傳：
 
-2. 使用「串口燒錄軟體」（從官方下載）
+```bash
+pio run --target uploadfs
+```
 
-3. 選擇 WAV 檔案並燒錄至 Flash
-
-4. 燒錄完成後，ESP32 即可透過 UART 發送指令播放
+音檔會被上傳到 ESP32 的 SPIFFS 檔案系統，程式執行時從 SPIFFS 讀取並透過藍牙播放。
 
 ---
 
@@ -181,36 +181,33 @@ ffmpeg -i input.m4a -ar 16000 -ac 1 -sample_fmt s16 -acodec pcm_s16le output.wav
 
 ---
 
-### 階段 4：SU-03T 音頻模組整合 ⏳
+### 階段 4：藍牙音頻整合 ✅
 
 **4-1 學習**
-- ✅ SU-03T 官方規格書研讀
-- ✅ 產出：`components/SU03T.md`
+- ✅ ESP32-A2DP 函式庫研究
+- ✅ 藍牙 A2DP Source 原理學習
+- ✅ SPIFFS 檔案系統學習
 
 **4-2 開發**
-- ✅ UART2 初始化（9600 baud）
-- ✅ `speakText()` 函數實作
-- ✅ 黑色按鈕觸發測試播放
+- ✅ SPIFFS 初始化與檔案系統掛載
+- ✅ WAV 音檔上傳至 ESP32 SPIFFS
+- ✅ 藍牙 A2DP Source 初始化
+- ✅ 音頻回調函數實作
+- ✅ 軟體重採樣功能（16kHz → 44.1kHz）
+- ✅ 音頻緩衝區優化
 
 **4-3 硬體準備**
-- ✅ SU-03T 接線完成
-- ✅ 喇叭連接
+- ✅ 藍牙喇叭配對（Bose Mini II SoundLink）
 - ✅ 音檔格式轉換（m4a → WAV 16kHz）
 - ✅ 準備 3 個音檔：
   - `audio/Dad_breakfast.wav`
   - `audio/SX_tabata.wav`
   - `audio/Mom_storytelling.wav`
 
-**4-4 待完成**
-- 🛒 購買 CH340 燒錄器（等待送達）
-- ⏳ 下載 SU-03T 燒錄軟體
-- ⏳ 燒錄音檔至 SU-03T Flash
-- ⏳ 測試 ESP32 播放指令
-- ⏳ 實際播放效果驗證
-
-**4-5 測試與產出**
-- ⏳ UART 通訊穩定性測試
-- ⏳ 整合至 `src/main.cpp`
+**4-4 測試與產出**
+- ✅ 藍牙連接穩定性測試
+- ✅ 音頻播放品質驗證（成功解決採樣率不匹配問題）
+- ✅ 整合至 `src/main.cpp`
 
 ---
 
@@ -221,11 +218,13 @@ ffmpeg -i input.m4a -ar 16000 -ac 1 -sample_fmt s16 -acodec pcm_s16le output.wav
 - ⏳ 1 分鐘限時邏輯（`millis()` 計時）
 - ⏳ 黑色按鈕觸發抽獎
 - ⏳ 超時自動失效
-- ⏳ 隨機選擇 1-3 號音檔播放（`random()`）
+- ⏳ 隨機選擇音檔播放（從 SPIFFS 讀取）
+- ⏳ 透過藍牙喇叭播放音頻
 
 **5-2 測試與產出**
 - ⏳ 限時邏輯驗證
 - ⏳ 隨機播放驗證
+- ⏳ 藍牙播放穩定性測試
 - ⏳ 整合至 `src/main.cpp`
 
 ---
@@ -239,8 +238,9 @@ ffmpeg -i input.m4a -ar 16000 -ac 1 -sample_fmt s16 -acodec pcm_s16le output.wav
   - 抽獎超時處理
   - 重複抽獎防止
 - ⏳ 錯誤處理：
-  - UART 通訊失敗
-  - 音檔播放失敗
+  - 藍牙連接失敗處理
+  - SPIFFS 讀取失敗處理
+  - 音檔播放失敗處理
 
 **6-2 測試與產出**
 - ⏳ 完整使用者流程測試
@@ -271,11 +271,12 @@ ffmpeg -i input.m4a -ar 16000 -ac 1 -sample_fmt s16 -acodec pcm_s16le output.wav
 
 **主要程式庫**：
 - `Arduino.h`（內建）
-- `HardwareSerial.h`（UART 通訊）
+- `SPIFFS.h`（檔案系統）
+- `ESP32-A2DP`（藍牙音頻串流）
 
 **工具**：
 - ffmpeg（音頻格式轉換）
-- CH340 燒錄軟體（SU-03T 音檔燒錄）
+- PlatformIO（SPIFFS 檔案上傳）
 
 ---
 
