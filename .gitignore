@@ -12,3 +12,7 @@
 *.swp
 *.swo
 *~
+
+# Audio files
+data/
+audio/
